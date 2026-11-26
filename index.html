@@ -6,6 +6,7 @@
     <meta name="theme-color" content="#211710">
     <meta name="description" content="Find your next moment or create an event with TIQO.">
     <title>TIQO — Find your next moment</title>
+    <link rel="icon" type="image/svg+xml" href="./logo.svg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
@@ -15,7 +16,7 @@
     <div class="app-shell">
       <header class="topbar">
         <a class="brand" href="./" aria-label="TIQO home">
-          <span class="brand-mark" aria-hidden="true">T</span>
+          <img class="brand-mark" src="./logo.svg" alt="" width="34" height="34">
           <span>TIQO<span class="brand-dot">.</span></span>
         </a>
         <nav class="main-nav" aria-label="Main navigation">
@@ -61,7 +62,12 @@
                 <p class="eyebrow">HAPPENING AROUND YOU</p>
                 <h2>Find your next moment</h2>
               </div>
-              <span class="demo-label"><span class="status-dot"></span> Events in this preview</span>
+              <div class="carousel-tools">
+                <span class="demo-label"><span class="status-dot"></span> Events in this preview</span>
+                <button class="carousel-arrow" id="events-previous" type="button" aria-label="Previous events">←</button>
+                <button class="carousel-arrow" id="events-pause" type="button" aria-label="Pause event slideshow">Ⅱ</button>
+                <button class="carousel-arrow" id="events-next" type="button" aria-label="Next events">→</button>
+              </div>
             </div>
             <div id="discover-events" class="discover-events"></div>
             <div id="discover-empty" class="empty-state discover-empty">
@@ -119,7 +125,7 @@
             <p>Create your first event and get a link to share with your guests.</p>
             <button class="button button-outline" id="empty-create-button" type="button">Create your first event <span aria-hidden="true">→</span></button>
           </div>
-          <p class="prototype-note"><strong>Preview mode:</strong> Payments and live collection reporting become available once a secure server-side M-Pesa integration is configured.</p>
+          <p class="prototype-note"><strong>Sandbox mode:</strong> Test STK Push is available; live payments and collection reporting require a production backend.</p>
         </section>
 
         <section id="create-view" class="view hidden">
@@ -135,7 +141,7 @@
               </div>
             </div>
             <form class="event-form signup-form" id="signup-form">
-              <div class="form-topline"><span>ORGANIZER SIGN UP</span><span>01 / 02</span></div>
+              <div class="form-topline"><span>ORGANIZER SIGN UP</span><span>01 / 03</span></div>
               <p class="form-step-title">First, a little about you.</p>
               <label for="organizer-name">Your full name</label>
               <input id="organizer-name" name="fullName" type="text" maxlength="100" placeholder="e.g. Wanjiku Njeri" autocomplete="name" required>
@@ -144,17 +150,38 @@
               <input id="organizer-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+254 7XX XXX XXX" pattern="(?:\+?254|0)?[17][0-9]{8}" title="Enter a valid Kenyan mobile number, such as 0712345678 or +254712345678." required>
               <p class="field-hint">Kenyan mobile number, for event organizer contact.</p>
               <div class="form-divider"></div>
-              <button class="button button-dark submit-button" type="submit">Continue to event details <span aria-hidden="true">→</span></button>
-              <p class="form-disclaimer">Preview sign-up only. This browser demo does not securely create an account.</p>
+              <button class="button button-dark submit-button" type="submit" id="send-code-button">Send verification code <span aria-hidden="true">→</span></button>
+              <p class="form-disclaimer">We’ll send a one-time code by SMS to verify your number.</p>
+              <p class="form-disclaimer">Africa’s Talking sandbox only · organizer details are kept for this browser session.</p>
+              <div class="otp-entry hidden" id="otp-entry">
+                <div class="form-divider"></div>
+                <div class="form-topline"><span>VERIFY YOUR NUMBER</span><span>02 / 03</span></div>
+                <label for="organizer-code">SMS verification code</label>
+                <input id="organizer-code" name="verificationCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="6-digit code">
+                <p class="field-hint">Enter the code sent to your phone. It expires in 5 minutes.</p>
+                <button class="button button-dark submit-button" type="button" id="verify-code-button">Verify &amp; continue <span aria-hidden="true">→</span></button>
+                <button class="resend-code" type="button" id="resend-code-button">Send a new code</button>
+                <button class="resend-code" type="button" id="change-number-button">Use a different number</button>
+              </div>
             </form>
 
             <form class="event-form hidden" id="event-form">
-              <div class="form-topline"><span>NEW EVENT</span><span>01 / 01</span></div>
+              <div class="form-topline"><span>NEW EVENT</span><span>03 / 03</span></div>
               <p class="form-step-title">Now, let's make it happen.</p>
               <p id="organizer-greeting" class="organizer-greeting"></p>
               <label for="event-name">What are we celebrating?</label>
               <input id="event-name" name="name" type="text" maxlength="70" placeholder="e.g. Nairobi Rooftop Sessions" autocomplete="off" required>
               <p class="field-hint">Pick a name your guests will recognize.</p>
+              <label for="event-date">When is it happening?</label>
+              <input id="event-date" class="form-control" name="dateTime" type="datetime-local" required>
+              <p class="field-hint">Date and start time in East Africa Time.</p>
+              <label for="event-cover">Event cover photo</label>
+              <input id="event-cover" class="form-control file-input" name="cover" type="file" accept="image/jpeg,image/png,.jpg,.jpeg,.png" required>
+              <p class="field-hint">JPG or PNG · max 8 MB. We optimize it for the event listing.</p>
+              <div id="cover-preview-wrap" class="cover-preview-wrap hidden">
+                <img id="cover-preview" alt="Selected event cover preview">
+                <button id="remove-cover" type="button" class="remove-cover" aria-label="Remove selected cover photo">×</button>
+              </div>
               <label for="ticket-price">Price per ticket</label>
               <div class="price-input">
                 <span>KES</span>
@@ -164,21 +191,23 @@
               <div class="form-divider"></div>
               <div class="form-assurance"><span aria-hidden="true">◈</span> Each ticket is charged at the price you set.</div>
               <button class="button button-dark submit-button" type="submit">Create event link <span aria-hidden="true">→</span></button>
-              <p class="form-disclaimer">To open links on other devices, host TIQO on a public HTTPS website.</p>
+              <p class="form-disclaimer">Events and cover photos are stored in this browser only. Shared storage is needed for guests on other devices to see the listing and photo.</p>
             </form>
           </div>
         </section>
 
         <section id="guest-view" class="view guest-view hidden">
           <div class="guest-topline">
-            <a class="brand" href="./" aria-label="TIQO home"><span class="brand-mark" aria-hidden="true">T</span><span>TIQO<span class="brand-dot">.</span></span></a>
+            <a class="brand" href="./" aria-label="TIQO home"><img class="brand-mark" src="./logo.svg" alt="" width="34" height="34"><span>TIQO<span class="brand-dot">.</span></span></a>
             <span class="secure-label"><span aria-hidden="true">◇</span> TICKET CHECKOUT</span>
           </div>
           <div class="guest-layout">
             <div class="guest-copy">
               <p class="eyebrow">YOU'RE INVITED</p>
+              <img id="guest-cover" class="guest-cover hidden" alt="">
               <h1 id="guest-event-name">A little something to look forward to.</h1>
               <p class="guest-description">Good times are better together. Pick your tickets to get started.</p>
+              <div id="guest-event-date" class="guest-when hidden"><span aria-hidden="true">◷</span><span id="guest-date-text"></span></div>
               <div class="guest-detail"><span class="detail-icon" aria-hidden="true">◎</span><span>Ticket price</span><strong id="guest-unit-price">KES 0</strong></div>
             </div>
             <div class="checkout-card">
@@ -191,10 +220,14 @@
                   <button type="button" id="quantity-plus" aria-label="Add one ticket">＋</button>
                 </div>
               </div>
+              <label class="buyer-phone-label" for="buyer-phone">M-Pesa phone number</label>
+              <input id="buyer-phone" class="buyer-phone-input" type="tel" inputmode="tel" autocomplete="tel" placeholder="0712345678" pattern="(?:\+?254|0)?[17][0-9]{8}" title="Enter a valid Kenyan mobile number, such as 0712345678 or +254712345678." required>
+              <p class="buyer-phone-hint">Daraja sandbox test number only. No real money is charged.</p>
               <div class="total-row"><span>Total due</span><strong id="guest-total">KES 0</strong></div>
               <p class="total-hint">Full ticket price × number of tickets</p>
-              <button class="button button-dark pay-button" type="button" id="pay-button">Continue to payment <span aria-hidden="true">→</span></button>
-              <p class="checkout-foot">M-Pesa checkout will open after payment setup is complete.</p>
+              <button class="button button-dark pay-button" type="button" id="pay-button">Pay with M-Pesa <span aria-hidden="true">→</span></button>
+              <p class="checkout-foot">Sandbox checkout · Test transactions only</p>
+              <p id="payment-status" class="payment-status" role="status" aria-live="polite"></p>
             </div>
           </div>
           <p class="guest-footer">A good time, made easy. <span>TIQO.</span></p>

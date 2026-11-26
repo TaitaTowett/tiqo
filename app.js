@@ -10,6 +10,19 @@ let toastTimer;
 let currentGuestEvent = null;
 let ticketQuantity = 1;
 let organizerProfile = null;
+let pendingOrganizer = null;
+let selectedCoverDataUrl = "";
+let activePaymentRequestId = null;
+let paymentCompleted = false;
+let slideshowTimer;
+let slideshowPaused = false;
+const payButton = document.getElementById("pay-button");
+const paymentStatus = document.getElementById("payment-status");
+const originalPayButtonHtml = payButton.innerHTML;
+const eventDateInput = document.getElementById("event-date");
+const coverInput = document.getElementById("event-cover");
+const coverPreviewWrap = document.getElementById("cover-preview-wrap");
+const coverPreview = document.getElementById("cover-preview");
 
 function showToast(message) {
   toast.textContent = message;
@@ -20,6 +33,313 @@ function showToast(message) {
 
 function formatKes(amount) {
   return `KES ${new Intl.NumberFormat("en-KE", { maximumFractionDigits: 0 }).format(amount)}`;
+}
+
+function dateTimeToIso(value) {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return null;
+  const date = new Date(`${value}:00+03:00`);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function formatNairobiDate(value) {
+  if (typeof value !== "string") return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-KE", {
+    timeZone: "Africa/Nairobi",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(date);
+}
+
+function setEventDateMinimum() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Nairobi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  eventDateInput.min = `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}`;
+}
+
+function optimizeCoverPhoto(file) {
+  return new Promise((resolve, reject) => {
+    if (!file || !["image/jpeg", "image/png"].includes(file.type)) {
+      reject(new Error("Choose a JPG or PNG image."));
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      reject(new Error("That image is larger than 8 MB. Choose a smaller JPG or PNG."));
+      return;
+    }
+
+    const imageUrl = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(imageUrl);
+      if (!image.naturalWidth || !image.naturalHeight) {
+        reject(new Error("We couldn't read that image. Choose a different JPG or PNG."));
+        return;
+      }
+
+      const scale = Math.min(1, 1400 / image.naturalWidth, 1000 / image.naturalHeight);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(image.naturalWidth * scale);
+      canvas.height = Math.round(image.naturalHeight * scale);
+      const context = canvas.getContext("2d");
+      if (!context) {
+        reject(new Error("This browser can't optimize the selected image."));
+        return;
+      }
+      context.fillStyle = "#241710";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+      let optimized = "";
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        optimized = canvas.toDataURL("image/jpeg", 0.82 - attempt * 0.1);
+        if (optimized.length <= 700000) break;
+        const reducedWidth = Math.max(1, Math.round(canvas.width * 0.75));
+        const reducedHeight = Math.max(1, Math.round(canvas.height * 0.75));
+        const reducedCanvas = document.createElement("canvas");
+        reducedCanvas.width = reducedWidth;
+        reducedCanvas.height = reducedHeight;
+        const reducedContext = reducedCanvas.getContext("2d");
+        if (!reducedContext) break;
+        reducedContext.drawImage(canvas, 0, 0, reducedWidth, reducedHeight);
+        canvas.width = reducedWidth;
+        canvas.height = reducedHeight;
+        const resizedContext = canvas.getContext("2d");
+        if (!resizedContext) break;
+        resizedContext.drawImage(reducedCanvas, 0, 0);
+      }
+      if (optimized.length > 700000) {
+        reject(new Error("We couldn't reduce the image enough. Try a smaller cover photo."));
+        return;
+      }
+      resolve(optimized);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(imageUrl);
+      reject(new Error("We couldn't read that image. Choose a different JPG or PNG."));
+    };
+    image.src = imageUrl;
+  });
+}
+
+function normalizeKenyanPhone(phone) {
+  const compact = phone.replace(/[\s()-]/g, "");
+  if (/^0[17]\d{8}$/.test(compact)) return `254${compact.slice(1)}`;
+  if (/^\+?254[17]\d{8}$/.test(compact)) return compact.replace(/^\+/, "");
+  return null;
+}
+
+function setPaymentStatus(message, state = "pending") {
+  paymentStatus.textContent = message;
+  paymentStatus.dataset.state = state;
+}
+
+function wait(milliseconds) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+async function readApiResponse(response) {
+  try {
+    const result = await response.json();
+    if (!result || typeof result !== "object") throw new Error("Invalid payment response.");
+    return result;
+  } catch (error) {
+    throw new Error("The service response was not valid JSON. Confirm the Netlify Functions deployment.");
+  }
+}
+
+async function requestOrganizerCode() {
+  const fullName = document.getElementById("organizer-name").value.trim().replace(/\s+/g, " ");
+  const phone = normalizeKenyanPhone(document.getElementById("organizer-phone").value.trim());
+  if (fullName.split(" ").filter(Boolean).length < 2) {
+    showToast("Please enter your full name, including at least your first and last name.");
+    return;
+  }
+  if (!phone) {
+    showToast("Enter a valid Kenyan mobile number, such as 0712345678 or +254712345678.");
+    return;
+  }
+  if (window.location.protocol !== "https:") {
+    showToast("Phone verification needs the public HTTPS TIQO website.");
+    return;
+  }
+
+  const button = document.getElementById("send-code-button");
+  const resendButton = document.getElementById("resend-code-button");
+  button.disabled = true;
+  resendButton.disabled = true;
+  button.textContent = "Sending SMS code…";
+  try {
+    const response = await fetch("/.netlify/functions/otp-send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: `+${phone}` })
+    });
+    const result = await readApiResponse(response);
+    if (!response.ok) throw new Error(result.error || "We couldn't send a verification code.");
+    pendingOrganizer = { fullName, phone };
+    document.getElementById("organizer-phone").readOnly = true;
+    document.getElementById("otp-entry").classList.remove("hidden");
+    document.getElementById("organizer-code").focus();
+    showToast("Verification code sent by SMS. Check your phone.");
+  } catch (error) {
+    showToast(error.message || "We couldn't send a verification code.");
+  } finally {
+    button.disabled = false;
+    resendButton.disabled = false;
+    button.innerHTML = 'Send verification code <span aria-hidden="true">→</span>';
+  }
+}
+
+async function verifyOrganizerCode() {
+  if (!pendingOrganizer) {
+    showToast("Request a new verification code first.");
+    return;
+  }
+  const codeInput = document.getElementById("organizer-code");
+  const code = codeInput.value.trim();
+  if (!/^\d{6}$/.test(code)) {
+    showToast("Enter the 6-digit code sent to your phone.");
+    codeInput.focus();
+    return;
+  }
+
+  const button = document.getElementById("verify-code-button");
+  button.disabled = true;
+  button.textContent = "Verifying…";
+  try {
+    const response = await fetch("/.netlify/functions/otp-verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: `+${pendingOrganizer.phone}`, code })
+    });
+    const result = await readApiResponse(response);
+    if (!response.ok) throw new Error(result.error || "We couldn't verify that code.");
+    saveProfile({ fullName: pendingOrganizer.fullName, phone: `+${pendingOrganizer.phone}` });
+    signupForm.classList.add("hidden");
+    eventForm.classList.remove("hidden");
+    document.getElementById("organizer-greeting").textContent = `Creating as ${pendingOrganizer.fullName}`;
+    showToast("Phone number verified. Add your event details.");
+    pendingOrganizer = null;
+  } catch (error) {
+    showToast(error.message || "We couldn't verify that code.");
+  } finally {
+    button.disabled = false;
+    button.innerHTML = 'Verify &amp; continue <span aria-hidden="true">→</span>';
+  }
+}
+
+async function checkSandboxPayment(requestId) {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    if (attempt > 0) await wait(4000);
+    setPaymentStatus("Waiting for the Daraja sandbox payment result…");
+
+    const url = new URL("/.netlify/functions/stk-status", window.location.origin);
+    url.searchParams.set("requestId", requestId);
+    const response = await fetch(url);
+    if (response.status === 404) activePaymentRequestId = null;
+    const result = await readApiResponse(response);
+    if (!response.ok) {
+      if (response.status === 404) activePaymentRequestId = null;
+      throw new Error(result.error || "Could not check the sandbox payment status.");
+    }
+
+    if (result.status === "succeeded") {
+      activePaymentRequestId = null;
+      paymentCompleted = true;
+      setPaymentStatus("Sandbox payment confirmed. No real money was charged; ticket issuing and organizer totals are not connected yet.", "success");
+      return;
+    }
+    if (result.status === "failed") {
+      activePaymentRequestId = null;
+      setPaymentStatus(result.message || "The sandbox payment was not completed. You can try again.", "error");
+      return;
+    }
+    if (result.status === "unknown") {
+      setPaymentStatus(result.message || "The sandbox result is uncertain. Do not start another payment yet.", "error");
+      return;
+    }
+  }
+
+  setPaymentStatus("The request is still pending. You can check again without starting another payment.");
+}
+
+async function submitSandboxPayment() {
+  if (paymentCompleted) return;
+
+  if (activePaymentRequestId) {
+    payButton.disabled = true;
+    payButton.textContent = "Checking status…";
+    try {
+      await checkSandboxPayment(activePaymentRequestId);
+    } catch (error) {
+      setPaymentStatus(error.message, "error");
+    } finally {
+      payButton.disabled = paymentCompleted;
+      payButton.textContent = paymentCompleted ? "Sandbox payment confirmed" : activePaymentRequestId ? "Check payment status" : "Pay with M-Pesa";
+    }
+    return;
+  }
+
+  const phone = normalizeKenyanPhone(document.getElementById("buyer-phone").value.trim());
+  if (!phone) {
+    setPaymentStatus("Enter a valid Kenyan M-Pesa number, such as 0712345678.", "error");
+    document.getElementById("buyer-phone").focus();
+    return;
+  }
+  if (window.location.protocol !== "https:") {
+    setPaymentStatus("Sandbox checkout requires the public HTTPS TIQO site.", "error");
+    return;
+  }
+
+  const amount = currentGuestEvent.price * ticketQuantity;
+  if (!Number.isSafeInteger(amount) || amount < 1 || amount > 10000000) {
+    setPaymentStatus("This sandbox checkout amount is outside the allowed range.", "error");
+    return;
+  }
+
+  payButton.disabled = true;
+  payButton.textContent = "Sending sandbox request…";
+  setPaymentStatus("Contacting the Daraja sandbox. No real money is charged.");
+  const requestId = window.crypto.randomUUID();
+  activePaymentRequestId = requestId;
+
+  try {
+    const response = await fetch("/.netlify/functions/stk-push", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        requestId,
+        phone,
+        amount,
+        eventName: currentGuestEvent.name,
+        quantity: ticketQuantity
+      })
+    });
+    const result = await readApiResponse(response);
+    if (!response.ok) throw new Error(result.error || "Could not start sandbox checkout.");
+
+    setPaymentStatus("Sandbox request accepted. Complete the test payment, then wait for Daraja confirmation.");
+    await checkSandboxPayment(requestId);
+  } catch (error) {
+    setPaymentStatus(error.message || "Could not reach the Daraja sandbox.", "error");
+  } finally {
+    payButton.disabled = paymentCompleted;
+    payButton.textContent = paymentCompleted ? "Sandbox payment confirmed" : activePaymentRequestId ? "Check payment status" : "Pay with M-Pesa";
+  }
 }
 
 function readEvents() {
@@ -60,7 +380,11 @@ function saveProfile(profile) {
 
 function buildGuestUrl(event) {
   const url = new URL(window.location.href);
-  url.search = new URLSearchParams({ name: event.name, price: String(event.price) }).toString();
+  url.search = "";
+  url.searchParams.set("name", event.name);
+  url.searchParams.set("price", String(event.price));
+  if (event.id) url.searchParams.set("id", event.id);
+  if (event.dateTime) url.searchParams.set("dateTime", event.dateTime);
   url.hash = "";
   return url.toString();
 }
@@ -82,6 +406,7 @@ function renderDiscoverEvents(searchTerm = "") {
   const matches = events.filter((event) => event.name.toLocaleLowerCase().includes(query));
   const list = document.getElementById("discover-events");
   const emptyState = document.getElementById("discover-empty");
+  window.clearInterval(slideshowTimer);
   list.replaceChildren();
   emptyState.classList.toggle("hidden", matches.length > 0);
 
@@ -101,8 +426,16 @@ function renderDiscoverEvents(searchTerm = "") {
     card.className = "discover-card glass-panel";
     const art = document.createElement("div");
     art.className = "discover-card-art";
-    art.setAttribute("aria-hidden", "true");
-    art.textContent = "✳";
+    if (event.coverImage) {
+      const image = document.createElement("img");
+      image.src = event.coverImage;
+      image.alt = "";
+      image.loading = "lazy";
+      art.append(image);
+    } else {
+      art.setAttribute("aria-hidden", "true");
+      art.textContent = "✳";
+    }
     const body = document.createElement("div");
     body.className = "discover-card-body";
     const label = document.createElement("span");
@@ -112,6 +445,9 @@ function renderDiscoverEvents(searchTerm = "") {
     name.textContent = event.name;
     const price = document.createElement("p");
     price.textContent = `${formatKes(event.price)} per ticket`;
+    const date = document.createElement("p");
+    date.className = "discover-card-date";
+    date.textContent = formatNairobiDate(event.dateTime) || "Date to be announced";
     const action = document.createElement("button");
     action.className = "button button-dark";
     action.type = "button";
@@ -120,10 +456,33 @@ function renderDiscoverEvents(searchTerm = "") {
       window.history.pushState({}, "", buildGuestUrl(event));
       loadGuestView(new URLSearchParams(window.location.search));
     });
-    body.append(label, name, price, action);
+    body.append(label, name, date, price, action);
     card.append(art, body);
     list.append(card);
   }
+
+  startSlideshow();
+}
+
+function scrollEvents(direction) {
+  const list = document.getElementById("discover-events");
+  const cards = list.querySelectorAll(".discover-card");
+  if (cards.length < 2) return;
+  const gap = Number.parseFloat(window.getComputedStyle(list).columnGap) || 0;
+  const step = cards[0].getBoundingClientRect().width + gap;
+  const visibleCount = Math.max(1, Math.floor((list.clientWidth + gap) / step));
+  const maxStartIndex = Math.max(0, cards.length - visibleCount);
+  const currentIndex = Math.min(maxStartIndex, Math.max(0, Math.round(list.scrollLeft / step)));
+  const targetIndex = (currentIndex + direction + maxStartIndex + 1) % (maxStartIndex + 1);
+  const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+  list.scrollTo({ left: targetIndex * step, behavior });
+}
+
+function startSlideshow() {
+  window.clearInterval(slideshowTimer);
+  const cards = document.querySelectorAll("#discover-events .discover-card");
+  if (slideshowPaused || cards.length < 2 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  slideshowTimer = window.setInterval(() => scrollEvents(1), 5500);
 }
 
 function renderEvents() {
@@ -140,15 +499,24 @@ function renderEvents() {
 
     const icon = document.createElement("div");
     icon.className = "event-icon";
-    icon.setAttribute("aria-hidden", "true");
-    icon.textContent = "✳";
+    if (event.coverImage) {
+      const image = document.createElement("img");
+      image.src = event.coverImage;
+      image.alt = "";
+      image.loading = "lazy";
+      icon.append(image);
+    } else {
+      icon.setAttribute("aria-hidden", "true");
+      icon.textContent = "✳";
+    }
 
     const meta = document.createElement("div");
     meta.className = "event-meta";
     const name = document.createElement("h3");
     name.textContent = event.name;
     const price = document.createElement("p");
-    price.textContent = `${formatKes(event.price)} per ticket`;
+    const dateText = formatNairobiDate(event.dateTime);
+    price.textContent = dateText ? `${formatKes(event.price)} per ticket · ${dateText}` : `${formatKes(event.price)} per ticket`;
     meta.append(name, price);
 
     const count = document.createElement("div");
@@ -196,7 +564,7 @@ async function copyEventLink(event) {
   }
   try {
     await navigator.clipboard.writeText(link);
-    showToast("Event link copied. Payments are not enabled in this preview.");
+    showToast("Event link copied. Sandbox payments only; no real money is charged.");
   } catch (error) {
     showToast(`Copy wasn't available. You can copy this link from the address bar: ${link}`);
   }
@@ -211,10 +579,26 @@ function loadGuestView(params) {
     renderEvents();
     return false;
   }
-  currentGuestEvent = { name, price };
+  const eventId = params.get("id");
+  const localEvent = eventId ? readEvents().find((event) => event.id === eventId) : null;
+  const dateTime = params.get("dateTime") || localEvent?.dateTime || "";
+  const coverImage = localEvent?.coverImage || "";
+  currentGuestEvent = { id: eventId || "", name, price, dateTime, coverImage };
   ticketQuantity = 1;
   document.getElementById("guest-event-name").textContent = name;
   document.getElementById("guest-unit-price").textContent = `${formatKes(price)} per ticket`;
+  const cover = document.getElementById("guest-cover");
+  cover.classList.toggle("hidden", !coverImage);
+  if (coverImage) {
+    cover.src = coverImage;
+    cover.alt = `${name} event cover`;
+  } else {
+    cover.removeAttribute("src");
+    cover.alt = "";
+  }
+  const date = formatNairobiDate(dateTime);
+  document.getElementById("guest-event-date").classList.toggle("hidden", !date);
+  document.getElementById("guest-date-text").textContent = date ? `${date} · East Africa Time` : "";
   updateGuestTotal();
   showView("guest");
   return true;
@@ -252,6 +636,46 @@ document.getElementById("discover-create-button").addEventListener("click", open
 document.getElementById("event-search").addEventListener("input", (event) => {
   renderDiscoverEvents(event.currentTarget.value);
 });
+document.getElementById("events-previous").addEventListener("click", () => scrollEvents(-1));
+document.getElementById("events-next").addEventListener("click", () => scrollEvents(1));
+document.getElementById("events-pause").addEventListener("click", (event) => {
+  slideshowPaused = !slideshowPaused;
+  event.currentTarget.textContent = slideshowPaused ? "▶" : "Ⅱ";
+  event.currentTarget.setAttribute("aria-label", slideshowPaused ? "Play event slideshow" : "Pause event slideshow");
+  startSlideshow();
+});
+const discoverEventsList = document.getElementById("discover-events");
+discoverEventsList.addEventListener("mouseenter", () => {
+  window.clearInterval(slideshowTimer);
+});
+discoverEventsList.addEventListener("mouseleave", startSlideshow);
+discoverEventsList.addEventListener("focusin", () => {
+  window.clearInterval(slideshowTimer);
+});
+discoverEventsList.addEventListener("focusout", startSlideshow);
+
+coverInput.addEventListener("change", async () => {
+  const file = coverInput.files && coverInput.files[0];
+  selectedCoverDataUrl = "";
+  coverPreviewWrap.classList.add("hidden");
+  if (!file) return;
+  try {
+    const optimizedImage = await optimizeCoverPhoto(file);
+    if (!coverInput.files || coverInput.files[0] !== file) return;
+    selectedCoverDataUrl = optimizedImage;
+    coverPreview.src = optimizedImage;
+    coverPreviewWrap.classList.remove("hidden");
+  } catch (error) {
+    coverInput.value = "";
+    showToast(error.message || "We couldn't use that cover photo.");
+  }
+});
+document.getElementById("remove-cover").addEventListener("click", () => {
+  coverInput.value = "";
+  selectedCoverDataUrl = "";
+  coverPreview.removeAttribute("src");
+  coverPreviewWrap.classList.add("hidden");
+});
 document.addEventListener("keydown", (event) => {
   if (event.key === "/" && !["INPUT", "TEXTAREA"].includes(document.activeElement.tagName)) {
     event.preventDefault();
@@ -266,63 +690,87 @@ document.getElementById("back-to-dashboard").addEventListener("click", () => {
 
 signupForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  const formData = new FormData(event.currentTarget);
-  const fullName = String(formData.get("fullName") || "").trim().replace(/\s+/g, " ");
-  const phone = String(formData.get("phone") || "").trim().replace(/[\s()-]/g, "");
-  const nameParts = fullName.split(" ").filter(Boolean);
-  if (nameParts.length < 2) {
-    showToast("Please enter your full name, including at least your first and last name.");
-    return;
-  }
-  if (!/^(?:\+?254|0)?[17]\d{8}$/.test(phone)) {
-    showToast("Enter a valid Kenyan mobile number, such as 0712345678 or +254712345678.");
-    return;
-  }
-  saveProfile({ fullName, phone });
-  signupForm.classList.add("hidden");
-  eventForm.classList.remove("hidden");
-  document.getElementById("organizer-greeting").textContent = `Creating as ${fullName}`;
+  requestOrganizerCode();
 });
 
-eventForm.addEventListener("submit", (event) => {
+document.getElementById("resend-code-button").addEventListener("click", requestOrganizerCode);
+document.getElementById("verify-code-button").addEventListener("click", verifyOrganizerCode);
+document.getElementById("change-number-button").addEventListener("click", () => {
+  pendingOrganizer = null;
+  document.getElementById("organizer-phone").readOnly = false;
+  document.getElementById("organizer-code").value = "";
+  document.getElementById("otp-entry").classList.add("hidden");
+  document.getElementById("organizer-phone").focus();
+});
+
+eventForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const formData = new FormData(event.currentTarget);
   const name = String(formData.get("name") || "").trim();
   const price = Number(formData.get("price"));
-  if (!name || !Number.isSafeInteger(price) || price < 1 || price > 10000000) {
-    showToast("Enter an event name and a whole-number ticket price from KES 1 to KES 10,000,000.");
+  const dateTime = dateTimeToIso(String(formData.get("dateTime") || ""));
+  if (!name || !dateTime || new Date(dateTime).getTime() <= Date.now() ||
+      !Number.isSafeInteger(price) || price < 1 || price > 10000000) {
+    showToast("Enter an event name, a future date and time, and a whole-number ticket price from KES 1 to KES 10,000,000.");
+    return;
+  }
+  if (!selectedCoverDataUrl) {
+    showToast("Choose a JPG or PNG cover photo before creating the event.");
     return;
   }
 
+  const submitButton = eventForm.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
+  submitButton.textContent = "Creating event…";
   const events = readEvents();
-  const newEvent = { id: window.crypto.randomUUID(), name, price };
-  if (!saveEvents([newEvent, ...events])) return;
-
-  eventForm.reset();
-  window.history.pushState({}, "", window.location.pathname);
-  renderEvents();
-  renderDiscoverEvents(document.getElementById("event-search").value);
-  showView("dashboard");
-  showToast("Preview ready. Host TIQO on HTTPS to share across devices; payment setup is still required.");
+  const newEvent = { id: window.crypto.randomUUID(), name, price, dateTime, coverImage: selectedCoverDataUrl };
+  try {
+    if (!saveEvents([newEvent, ...events])) return;
+    eventForm.reset();
+    selectedCoverDataUrl = "";
+    coverPreview.removeAttribute("src");
+    coverPreviewWrap.classList.add("hidden");
+    setEventDateMinimum();
+    window.history.pushState({}, "", window.location.pathname);
+    renderEvents();
+    renderDiscoverEvents(document.getElementById("event-search").value);
+    showView("dashboard");
+    showToast("Event created in this browser. Shared event storage and live payment setup are still needed.");
+  } finally {
+    submitButton.disabled = false;
+    submitButton.innerHTML = 'Create event link <span aria-hidden="true">→</span>';
+  }
 });
 
 document.getElementById("quantity-minus").addEventListener("click", () => {
+  if (paymentCompleted) return;
+  if (activePaymentRequestId) {
+    showToast("Check the current sandbox payment before changing ticket quantity.");
+    return;
+  }
   if (ticketQuantity > 1) {
     ticketQuantity -= 1;
+    setPaymentStatus("");
+    payButton.innerHTML = originalPayButtonHtml;
     updateGuestTotal();
   }
 });
 document.getElementById("quantity-plus").addEventListener("click", () => {
+  if (paymentCompleted) return;
+  if (activePaymentRequestId) {
+    showToast("Check the current sandbox payment before changing ticket quantity.");
+    return;
+  }
   if (ticketQuantity < 20) {
     ticketQuantity += 1;
+    setPaymentStatus("");
+    payButton.innerHTML = originalPayButtonHtml;
     updateGuestTotal();
   } else {
     showToast("You can select up to 20 tickets per checkout.");
   }
 });
-document.getElementById("pay-button").addEventListener("click", () => {
-  showToast("M-Pesa checkout isn't connected yet. No payment has been made.");
-});
+payButton.addEventListener("click", submitSandboxPayment);
 
 window.addEventListener("popstate", () => {
   const params = new URLSearchParams(window.location.search);
@@ -336,6 +784,7 @@ window.addEventListener("popstate", () => {
 
 document.getElementById("total-collected").textContent = formatKes(0);
 document.getElementById("transaction-count").textContent = "0";
+setEventDateMinimum();
 const initialParams = new URLSearchParams(window.location.search);
 if (initialParams.has("name") || initialParams.has("price")) {
   if (!loadGuestView(initialParams)) renderEvents();
