@@ -1,5 +1,0 @@
-[[redirects]]
-  from = "/*"
-  to = "https://redirects-playground.netlify.app/"
-  status = 301
-  force = true
