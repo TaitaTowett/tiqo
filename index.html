@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#211710">
+    <meta name="description" content="Find your next moment or create an event with TIQO.">
+    <title>TIQO — Find your next moment</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="./" aria-label="TIQO home">
+          <span class="brand-mark" aria-hidden="true">T</span>
+          <span>TIQO<span class="brand-dot">.</span></span>
+        </a>
+        <nav class="main-nav" aria-label="Main navigation">
+          <button class="nav-link active" id="discover-nav" type="button">Discover</button>
+          <button class="nav-link" id="dashboard-nav" type="button">My events</button>
+          <button class="nav-link" id="create-nav" type="button">Create an event</button>
+        </nav>
+        <div class="topbar-right">
+          <span class="country-tag"><span class="kenya-dot"></span> Kenya · KES</span>
+          <span class="avatar" aria-label="Your account">T</span>
+        </div>
+      </header>
+
+      <main id="main-content">
+        <section id="discover-view" class="view discover-view">
+          <div class="discover-hero">
+            <div class="hero-orb hero-orb-one" aria-hidden="true"></div>
+            <div class="hero-orb hero-orb-two" aria-hidden="true"></div>
+            <div class="hero-copy">
+              <p class="eyebrow">YOUR NEXT STORY STARTS HERE · KENYA</p>
+              <h1>Find your<br><span>people.</span></h1>
+              <p>From Nairobi nights to weekend escapes — find the moments worth showing up for.</p>
+              <button class="button button-light" id="hero-create-button" type="button">Bring people together <span aria-hidden="true">↗</span></button>
+            </div>
+            <div class="hero-glass-note"><span class="hero-note-icon" aria-hidden="true">✳</span><span>Made for moments<br><strong>worth sharing.</strong></span></div>
+            <div class="hero-index" aria-hidden="true">01 <span>—</span> NBO</div>
+          </div>
+
+          <div class="discover-content">
+            <div class="search-panel glass-panel">
+              <div>
+                <p class="eyebrow">THE GOOD STUFF IS OUT THERE</p>
+                <h2>What are you in the mood for?</h2>
+              </div>
+              <label class="search-box" for="event-search">
+                <span aria-hidden="true">⌕</span>
+                <input id="event-search" type="search" placeholder="Search events by name..." autocomplete="off">
+                <kbd>/</kbd>
+              </label>
+            </div>
+            <div class="section-heading discover-heading">
+              <div>
+                <p class="eyebrow">HAPPENING AROUND YOU</p>
+                <h2>Find your next moment</h2>
+              </div>
+              <span class="demo-label"><span class="status-dot"></span> Events in this preview</span>
+            </div>
+            <div id="discover-events" class="discover-events"></div>
+            <div id="discover-empty" class="empty-state discover-empty">
+              <div class="empty-art" aria-hidden="true"><span>✳</span><span>♪</span><span>✳</span></div>
+              <h3 id="discover-empty-title">The next big thing could be yours.</h3>
+              <p id="discover-empty-copy">No events to show just yet. Start one and invite your people.</p>
+              <button class="button button-outline" id="discover-create-button" type="button">Create an event <span aria-hidden="true">→</span></button>
+            </div>
+            <p class="prototype-note"><strong>Preview listings:</strong> Search currently covers events created in this browser. A hosted database is needed to discover events across devices.</p>
+          </div>
+        </section>
+
+        <section id="dashboard-view" class="view">
+          <div class="welcome-row">
+            <div>
+              <p class="eyebrow">YOUR SPACE</p>
+              <h1>Good things start<br class="mobile-break"> with a gathering.</h1>
+              <p class="intro">Create an event, share one link, and let every guest pay the full ticket price.</p>
+            </div>
+            <button class="button button-dark" id="new-event-button" type="button">
+              <span aria-hidden="true">＋</span> Create an event
+            </button>
+          </div>
+
+          <div class="stats-grid" aria-label="Collection summary">
+            <article class="stat-card stat-primary">
+              <div class="stat-heading"><span>Collected so far</span><span class="stat-icon" aria-hidden="true">↗</span></div>
+              <p class="stat-value" id="total-collected">KES 0</p>
+              <p class="stat-foot">Across all your events</p>
+            </article>
+            <article class="stat-card">
+              <div class="stat-heading"><span>Tickets sold</span><span class="stat-icon muted-icon" aria-hidden="true">◷</span></div>
+              <p class="stat-value" id="transaction-count">0</p>
+              <p class="stat-foot">Successful transactions</p>
+            </article>
+            <article class="stat-card">
+              <div class="stat-heading"><span>Active events</span><span class="stat-icon muted-icon" aria-hidden="true">✳</span></div>
+              <p class="stat-value" id="active-events">0</p>
+              <p class="stat-foot">Ready to share</p>
+            </article>
+          </div>
+
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">THE LINE-UP</p>
+              <h2>Your events</h2>
+            </div>
+            <span class="demo-label"><span class="status-dot"></span> Organizer view</span>
+          </div>
+
+          <div id="events-list" class="events-list"></div>
+          <div id="empty-state" class="empty-state">
+            <div class="empty-art" aria-hidden="true"><span>✳</span><span>♪</span><span>✳</span></div>
+            <h3>Your next big thing starts here.</h3>
+            <p>Create your first event and get a link to share with your guests.</p>
+            <button class="button button-outline" id="empty-create-button" type="button">Create your first event <span aria-hidden="true">→</span></button>
+          </div>
+          <p class="prototype-note"><strong>Preview mode:</strong> Payments and live collection reporting become available once a secure server-side M-Pesa integration is configured.</p>
+        </section>
+
+        <section id="create-view" class="view hidden">
+          <button class="back-link" id="back-to-dashboard" type="button">← &nbsp;Back to my events</button>
+          <div class="form-layout">
+            <div class="form-intro">
+              <p class="eyebrow">LET'S MAKE IT HAPPEN</p>
+              <h1>Every great event<br>has a first step.</h1>
+              <p>Give your event a name and a ticket price. We’ll make you a link to send to your people.</p>
+              <div class="fee-note">
+                <span class="fee-icon" aria-hidden="true">♡</span>
+                <p><strong>Clear from the start.</strong><br>A 2% platform fee is retained; the remaining 98% goes to the event beneficiary.</p>
+              </div>
+            </div>
+            <form class="event-form signup-form" id="signup-form">
+              <div class="form-topline"><span>ORGANIZER SIGN UP</span><span>01 / 02</span></div>
+              <p class="form-step-title">First, a little about you.</p>
+              <label for="organizer-name">Your full name</label>
+              <input id="organizer-name" name="fullName" type="text" maxlength="100" placeholder="e.g. Wanjiku Njeri" autocomplete="name" required>
+              <p class="field-hint">Use the name your guests know you by.</p>
+              <label for="organizer-phone">Your phone number</label>
+              <input id="organizer-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+254 7XX XXX XXX" pattern="(?:\+?254|0)?[17][0-9]{8}" title="Enter a valid Kenyan mobile number, such as 0712345678 or +254712345678." required>
+              <p class="field-hint">Kenyan mobile number, for event organizer contact.</p>
+              <div class="form-divider"></div>
+              <button class="button button-dark submit-button" type="submit">Continue to event details <span aria-hidden="true">→</span></button>
+              <p class="form-disclaimer">Preview sign-up only. This browser demo does not securely create an account.</p>
+            </form>
+
+            <form class="event-form hidden" id="event-form">
+              <div class="form-topline"><span>NEW EVENT</span><span>01 / 01</span></div>
+              <p class="form-step-title">Now, let's make it happen.</p>
+              <p id="organizer-greeting" class="organizer-greeting"></p>
+              <label for="event-name">What are we celebrating?</label>
+              <input id="event-name" name="name" type="text" maxlength="70" placeholder="e.g. Nairobi Rooftop Sessions" autocomplete="off" required>
+              <p class="field-hint">Pick a name your guests will recognize.</p>
+              <label for="ticket-price">Price per ticket</label>
+              <div class="price-input">
+                <span>KES</span>
+                <input id="ticket-price" name="price" type="number" min="1" max="10000000" step="1" inputmode="numeric" placeholder="1,500" required>
+              </div>
+              <p class="field-hint">Guests choose how many tickets; the full amount is due.</p>
+              <div class="form-divider"></div>
+              <div class="form-assurance"><span aria-hidden="true">◈</span> Each ticket is charged at the price you set.</div>
+              <button class="button button-dark submit-button" type="submit">Create event link <span aria-hidden="true">→</span></button>
+              <p class="form-disclaimer">To open links on other devices, host TIQO on a public HTTPS website.</p>
+            </form>
+          </div>
+        </section>
+
+        <section id="guest-view" class="view guest-view hidden">
+          <div class="guest-topline">
+            <a class="brand" href="./" aria-label="TIQO home"><span class="brand-mark" aria-hidden="true">T</span><span>TIQO<span class="brand-dot">.</span></span></a>
+            <span class="secure-label"><span aria-hidden="true">◇</span> TICKET CHECKOUT</span>
+          </div>
+          <div class="guest-layout">
+            <div class="guest-copy">
+              <p class="eyebrow">YOU'RE INVITED</p>
+              <h1 id="guest-event-name">A little something to look forward to.</h1>
+              <p class="guest-description">Good times are better together. Pick your tickets to get started.</p>
+              <div class="guest-detail"><span class="detail-icon" aria-hidden="true">◎</span><span>Ticket price</span><strong id="guest-unit-price">KES 0</strong></div>
+            </div>
+            <div class="checkout-card">
+              <p class="eyebrow">YOUR TICKETS</p>
+              <div class="quantity-row">
+                <div><strong>General admission</strong><span>One ticket per guest</span></div>
+                <div class="stepper" aria-label="Choose number of tickets">
+                  <button type="button" id="quantity-minus" aria-label="Remove one ticket">−</button>
+                  <output id="quantity-value" aria-live="polite">1</output>
+                  <button type="button" id="quantity-plus" aria-label="Add one ticket">＋</button>
+                </div>
+              </div>
+              <div class="total-row"><span>Total due</span><strong id="guest-total">KES 0</strong></div>
+              <p class="total-hint">Full ticket price × number of tickets</p>
+              <button class="button button-dark pay-button" type="button" id="pay-button">Continue to payment <span aria-hidden="true">→</span></button>
+              <p class="checkout-foot">M-Pesa checkout will open after payment setup is complete.</p>
+            </div>
+          </div>
+          <p class="guest-footer">A good time, made easy. <span>TIQO.</span></p>
+        </section>
+
+        <div id="toast" class="toast" role="status" aria-live="polite"></div>
+      </main>
+      <footer class="site-footer"><span>© 2026 TIQO</span><span>Made for moments worth sharing <span class="footer-heart">♥</span></span></footer>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>
